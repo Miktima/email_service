@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  emailservice:
+    build:
+      context: ./app
+    container_name: emailservice
+    ports:
+      - "29731:8090"
+    environment:
+      - CHROME_PATH=/usr/bin/google-chrome
