@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/chromedp/chromedp"
 )
@@ -15,9 +16,12 @@ func main() {
 	// create context
 	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(log.Printf))
 	defer cancel()
+	ctx, cancel = context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
 
 	mux.HandleFunc("/login", LoginHandler(&ctx))
 	mux.HandleFunc("/logout", LogoutHandler(&ctx))
+	mux.HandleFunc("/mail", MailHandler(&ctx))
 	http.ListenAndServe(":8090", mux)
 }
 
@@ -38,7 +42,6 @@ func LoginHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request)
 			return
 		}
 
-		log.Println("ctx login1:", *ctx)
 		login := req.PostFormValue("login")
 		password := req.PostFormValue("password")
 
@@ -116,6 +119,56 @@ func LogoutHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request
 		if len(res) > 0 {
 			resp["status"] = "Ok"
 			resp["message"] = res
+		} else {
+			resp["status"] = "Error"
+			resp["message"] = "Response is empty"
+		}
+		jsonResp, err := json.Marshal(resp)
+		if err != nil {
+			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+		}
+		w.Write(jsonResp)
+
+	}
+}
+
+func MailHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+		resp := make(map[string]string)
+
+		if ctx == nil {
+			resp["status"] = "Error"
+			resp["message"] = "Browser context is empty"
+			w.WriteHeader(http.StatusCreated)
+			w.Header().Set("Content-Type", "application/json")
+			jsonResp, err := json.Marshal(resp)
+			if err != nil {
+				log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+			}
+			w.Write(jsonResp)
+			return
+		}
+		var title, body string
+		err := chromedp.Run(*ctx,
+			chromedp.WaitVisible(`//div[@class="MailList-list-2L"]/div[@draggable="true"]`, chromedp.BySearch),
+			chromedp.Click(`//div[@class="MailList-list-2L"]/div[@draggable="true"]`, chromedp.BySearch),
+			chromedp.WaitVisible(`.ThemeBorder-root-26`, chromedp.ByQuery),
+			chromedp.Text(`div.ThemeBorder-root-26 > div.LetterHeader-root-S0 > div.LetterHeader-title-1D`, &title, chromedp.ByQuery),
+			chromedp.Text(`div.ThemeBorder-root-26 > div.LetterBody-root-3k`, &body, chromedp.ByQuery),
+			chromedp.Click(`//div[@class="HeaderToolbar-toolbar-15"]/div[@class="ToolbarButton-root-1B"]/div`, chromedp.BySearch),
+			chromedp.WaitVisible(`.MailList-list-2L`, chromedp.ByQuery),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+
+		if len(title) > 0 {
+			resp["status"] = "Ok"
+			resp["title"] = title
+			resp["body"] = body
 		} else {
 			resp["status"] = "Error"
 			resp["message"] = "Response is empty"
