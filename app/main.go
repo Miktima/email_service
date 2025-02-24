@@ -14,9 +14,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	// create context
+	//ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(log.Printf), chromedp.WithDebugf(log.Printf))
 	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(log.Printf))
-	defer cancel()
-	ctx, cancel = context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 
 	mux.HandleFunc("/login", LoginHandler(&ctx))
@@ -45,17 +44,17 @@ func LoginHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request)
 		login := req.PostFormValue("login")
 		password := req.PostFormValue("password")
 
-		// Определяем user agent
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
 		// run task list
 		var res string
 		ok := true
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+
 		// Проходим авторизацию в почту и возвращаем текст с количеством писем
 		err := chromedp.Run(*ctx,
 			chromedp.Navigate(`https://mail.rambler.ru/`),
-			chromedp.WaitVisible(`#login`),
-			chromedp.SendKeys(`#login`, login),
-			chromedp.SendKeys(`#password`, password),
+			chromedp.WaitVisible(`#login`, chromedp.ByQuery),
+			chromedp.SendKeys(`#login`, login, chromedp.ByQuery),
+			chromedp.SendKeys(`#password`, password, chromedp.ByQuery),
 			chromedp.Click(`//form/button[@type="submit"]`, chromedp.BySearch),
 			chromedp.WaitVisible(`//footer/div/button`, chromedp.BySearch),
 			chromedp.Click(`//footer/div/button`, chromedp.BySearch),
@@ -100,13 +99,14 @@ func LogoutHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request
 			w.Write(jsonResp)
 			return
 		}
+
 		var res string
 		err := chromedp.Run(*ctx,
 			chromedp.WaitVisible(`//div[@class="rc__mAFe4"]/div[@class="rc__xgBcB"]/button`, chromedp.BySearch),
 			chromedp.Click(`//div[@class="rc__mAFe4"]/div[@class="rc__xgBcB"]/button`, chromedp.BySearch),
 			chromedp.WaitVisible(`//div[@class="rc__IP0ui"]/div[4]/button`, chromedp.BySearch),
 			chromedp.Click(`//div[@class="rc__IP0ui"]/div[4]/button`, chromedp.BySearch),
-			chromedp.WaitVisible(`.ad_branding_site`, chromedp.ByQuery),
+			chromedp.Sleep(3*time.Second),
 			chromedp.Location(&res),
 		)
 		if err != nil {
@@ -119,6 +119,7 @@ func LogoutHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request
 		if len(res) > 0 {
 			resp["status"] = "Ok"
 			resp["message"] = res
+			ctx = nil
 		} else {
 			resp["status"] = "Error"
 			resp["message"] = "Response is empty"
@@ -148,6 +149,7 @@ func MailHandler(ctx *context.Context) func(http.ResponseWriter, *http.Request) 
 			w.Write(jsonResp)
 			return
 		}
+
 		var title, body string
 		err := chromedp.Run(*ctx,
 			chromedp.WaitVisible(`//div[@class="MailList-list-2L"]/div[@draggable="true"]`, chromedp.BySearch),
